@@ -74,17 +74,27 @@ public class WorldChunkListener implements Listener {
 					if(block.getType().equals(Material.AIR)) continue;
 					
 					//The blockfaces to check against
-					boolean face1, face2, face3, face4, face5, face6;
-					
+					boolean up, down, north, south, east, west;
+					/*
 					face1 = block.getRelative(BlockFace.UP).getType().equals(Material.AIR);
 					face2 = block.getRelative(BlockFace.DOWN).getType().equals(Material.AIR);
 					face3 = block.getRelative(BlockFace.NORTH).getType().equals(Material.AIR);
 					face4 = block.getRelative(BlockFace.SOUTH).getType().equals(Material.AIR);
 					face5 = block.getRelative(BlockFace.EAST).getType().equals(Material.AIR);
 					face6 = block.getRelative(BlockFace.WEST).getType().equals(Material.AIR);
-										
+					*/
+					
+					if(y >= chunk.getWorld().getMaxHeight()-1) up = false;
+					else up = (block.getRelative(BlockFace.UP).getTypeId() == 0);
+					if(y <= 1) down = false;
+					else down = (block.getRelative(BlockFace.DOWN).getTypeId() == 0);
+					north = (block.getRelative(BlockFace.NORTH).getTypeId() == 0);
+					south = (block.getRelative(BlockFace.SOUTH).getTypeId() == 0);
+					east = (block.getRelative(BlockFace.EAST).getTypeId() == 0);
+					west = (block.getRelative(BlockFace.WEST).getTypeId() == 0);
+					
 					if(plugin.blockID.contains(id)) {
-						if(face1 || face2 || face3 || face4 || face5 || face6) {
+						if(up || down || north || south || east || west) {
 							if(random.nextInt(100) <= plugin.chance) {
 								int index = random.nextInt(possibleLocations.size());
 								
@@ -95,7 +105,7 @@ public class WorldChunkListener implements Listener {
 							}
 						}
 					} else if(block.getType().equals(Material.STONE)) {
-						if(face1 || face2 || face3 || face4 || face5 || face6) continue;
+						if(up || down || north || south || east || west) continue;
 						else possibleLocations.add(block.getLocation());
 					}
 				}
