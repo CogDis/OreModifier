@@ -63,6 +63,12 @@ public class OreModifier extends JavaPlugin {
 			} catch (Exception e) {
 				Bukkit.getLogger().warning("[OreModifier] Error loading config.yml! Using default values...");
 			}
+		} else {
+			try {
+				config.load(this.getResource("default.yml"));
+			} catch (Exception e) {
+				Bukkit.getLogger().warning("[OreModifier] Error loading the default config.yml from the jar! Defaulting values...");
+			}
 		}
 
 		Iterator<String> temp = config.getStringList("OreModifier.ores").iterator();

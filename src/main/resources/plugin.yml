@@ -1,0 +1,6 @@
+name: OreModifier
+main: com.precipicegames.utilities.OreModifier
+version: 0.1
+authors:
+    - PrecipiceGames (Maintainer)
+    - HACKhalo2 (Maintainer, Creator)

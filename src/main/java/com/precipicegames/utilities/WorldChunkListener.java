@@ -41,7 +41,6 @@ package com.precipicegames.utilities;
 import java.util.ArrayList;
 import java.util.Random;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -58,7 +57,7 @@ public class WorldChunkListener implements Listener {
 	
 	public WorldChunkListener(OreModifier instance) {
 		this.plugin = instance;
-		this.random = new Random(Bukkit.getWorld("world").getSeed()); //TODO: make world independent
+		this.random = new Random(); //TODO: make world independent
 	}
 	
 	@EventHandler
