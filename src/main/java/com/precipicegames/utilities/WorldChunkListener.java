@@ -76,12 +76,12 @@ public class WorldChunkListener implements Listener {
 					//The blockfaces to check against
 					boolean face1, face2, face3, face4, face5, face6;
 					
-					face1 = block.getRelative(BlockFace.UP).equals(Material.AIR);
-					face2 = block.getRelative(BlockFace.DOWN).equals(Material.AIR);
-					face3 = block.getRelative(BlockFace.NORTH).equals(Material.AIR);
-					face4 = block.getRelative(BlockFace.SOUTH).equals(Material.AIR);
-					face5 = block.getRelative(BlockFace.EAST).equals(Material.AIR);
-					face6 = block.getRelative(BlockFace.WEST).equals(Material.AIR);
+					face1 = block.getRelative(BlockFace.UP).getType().equals(Material.AIR);
+					face2 = block.getRelative(BlockFace.DOWN).getType().equals(Material.AIR);
+					face3 = block.getRelative(BlockFace.NORTH).getType().equals(Material.AIR);
+					face4 = block.getRelative(BlockFace.SOUTH).getType().equals(Material.AIR);
+					face5 = block.getRelative(BlockFace.EAST).getType().equals(Material.AIR);
+					face6 = block.getRelative(BlockFace.WEST).getType().equals(Material.AIR);
 										
 					if(plugin.blockID.contains(id)) {
 						if(face1 || face2 || face3 || face4 || face5 || face6) {
