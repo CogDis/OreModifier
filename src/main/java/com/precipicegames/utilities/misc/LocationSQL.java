@@ -35,75 +35,77 @@
  *
  * Please see http://creativecommons.org/licenses/by-nc-sa/3.0/ for more information.
  */
+package com.precipicegames.utilities.misc;
 
-package com.precipicegames.utilities;
-
-import java.io.File;
-import java.util.Iterator;
-import java.util.LinkedList;
-
-import org.bukkit.Bukkit;
-import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.java.JavaPlugin;
-
-public class OreModifier extends JavaPlugin {
+public class LocationSQL {
 	
-	public LinkedList<Integer> blockID = new LinkedList<Integer>();
-	public int chance;
-	public WorldChunkListener listener = new WorldChunkListener(this);
-	public ChunkWorkerThread thread;
-	public File dataFile;
-
-	public void onLoad() {
-		YamlConfiguration config = new YamlConfiguration();
-		this.dataFile = new File(this.getDataFolder(), "config.yml");
-		this.thread = new ChunkWorkerThread(this.getDataFolder(), this);
-
-		if(this.dataFile != null && this.dataFile.exists()) {
-			try {
-				config.load(this.dataFile);
-			} catch (Exception e) {
-				Bukkit.getLogger().warning("[OreModifier] Error loading config.yml! Using default values...");
-			}
-		} else {
-			try {
-				config.load(this.getResource("default.yml"));
-			} catch (Exception e) {
-				Bukkit.getLogger().warning("[OreModifier] Error loading the default config.yml from the jar! Defaulting values...");
-			}
-		}
-
-		Iterator<String> temp = config.getStringList("OreModifier.ores").iterator();
-		this.chance = config.getInt("OreModifier.chance", 20);
-		while(temp.hasNext()) {
-			String preblockID = temp.next();
-			Integer postblockID = Integer.parseInt(preblockID);
-			
-			if(!this.blockID.contains(postblockID)) {
-				this.blockID.add(Integer.parseInt(preblockID));
-			} else {
-				Bukkit.getLogger().warning("[OreModifier] Block ID "+preblockID+" already exists, ignoring it...");
-			}
-		}
-
+	private int x;
+	private int y;
+	private int z;
+	private String worldName;
+	
+	public LocationSQL(int x, int y, int z, String worldName) {
+		this.x = x;
+		this.y = y;
+		this.z = z;
+		this.worldName = worldName;
+	}
+	
+	public LocationSQL(double x, double y, double z, String worldName) {
+		this.x = (int)x;
+		this.y = (int)y;
+		this.z = (int)z;
+		this.worldName = worldName;
+	}
+	
+	public int getX() {
+		return this.x;
+	}
+	
+	public int getY() {
+		return this.y;
+	}
+	
+	public int getZ() {
+		return this.z;
+	}
+	
+	public String getWorldName() {
+		return this.worldName;
 	}
 
-	public void onEnable() {
-		this.getServer().getPluginManager().registerEvents(listener, this);
-		Bukkit.getLogger().info("[OreModifier] I will now check for visible ores when a chunk is generated");
+	@Override
+	public int hashCode() {
+		final int prime = 503;
+		int result = 41;
+		result = prime * result
+				+ ((worldName == null) ? 0 : worldName.hashCode());
+		result = prime * result + x;
+		result = prime * result + y;
+		result = prime * result + z;
+		return result;
 	}
 
-	public void onDisable() {
-		YamlConfiguration config = new YamlConfiguration();
-		
-		config.set("OreModifier.ores", blockID);
-		config.set("OreModifier.chance", this.chance);
-		
-		try {
-		    config.save(dataFile);
-		} catch (Exception e) {
-		    Bukkit.getLogger().warning("[OreModifier] Error saving config.yml! Aborting save!");
-		    Bukkit.getLogger().info(e.getCause().getMessage());
-		}
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		LocationSQL other = (LocationSQL) obj;
+		if (worldName == null) {
+			if (other.worldName != null)
+				return false;
+		} else if (!worldName.equals(other.worldName))
+			return false;
+		if (x != other.x)
+			return false;
+		if (y != other.y)
+			return false;
+		if (z != other.z)
+			return false;
+		return true;
 	}
 }
