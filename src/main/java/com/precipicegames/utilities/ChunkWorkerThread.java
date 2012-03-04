@@ -53,15 +53,20 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import org.bukkit.Bukkit;
 import org.bukkit.ChunkSnapshot;
 import org.bukkit.Location;
+import org.bukkit.Material;
 
 import com.precipicegames.utilities.misc.ChunkSQL;
 import com.precipicegames.utilities.misc.LocationSQL;
 
 public class ChunkWorkerThread implements Runnable {
 	
-	private static HashMap<ChunkSQL, ArrayList<LocationSQL>> possibleLocations;
-	private static ConcurrentLinkedQueue<ChunkSnapshot> queue;
+	//The caches for different things
+	private HashMap<ChunkSQL, ArrayList<LocationSQL>> possibleLocations;
+	private ConcurrentLinkedQueue<ChunkSnapshot> queue;
+	private HashMap<Material, ArrayList<LocationSQL>> optimalMaterialLocations;
+	//The Data Directory
 	private File dataDir;
+	//Database Stuff
 	private Connection conn;
 	private String locAdd = "INSERT INTO locations(locx, locy, locz, worldname, lochash) VALUES(?, ?, ?, ?, ?);";
 	private String locGet = "SELECT * FROM locations WHERE lochash=?;";
@@ -71,12 +76,12 @@ public class ChunkWorkerThread implements Runnable {
 	private String chunkGet = "SELECT * FROM chunk WHERE csqlhash=?;";
 	private String chunkGetAll = "SELECT * FROM chunk;";
 	private String chunkRem = "DELETE FROM chunk WHERE chunkx=? AND chunkz=?;";
-	
 	//booleans to prevent issues with thread shutdown
 	private boolean enabled = false;
 	private boolean running = false;
 	
 	public ChunkWorkerThread(File dataDir, OreModifier instance) {
+		Bukkit.getLogger().info("[OreModifier] Initizaliting ChunkWorkerThread...");
 		this.dataDir = new File(dataDir+"/Chunk/");
 		try {
 			this.conn = DriverManager.getConnection("jdbc:sqlite:"+this.dataDir+"data.db");
@@ -85,10 +90,11 @@ public class ChunkWorkerThread implements Runnable {
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, locx INTEGER, locy INTEGER, locz INTEGER, worldname TEXT, lochash INTEGER UNIQUE);");
 			
 			//Load up the data, if available
-			queue = new ConcurrentLinkedQueue<ChunkSnapshot>(this.loadQueue());
-			possibleLocations = new HashMap<ChunkSQL, ArrayList<LocationSQL>>(this.loadPossibleLocations());
+			this.queue = new ConcurrentLinkedQueue<ChunkSnapshot>(this.loadQueue());
+			this.possibleLocations = new HashMap<ChunkSQL, ArrayList<LocationSQL>>(this.loadPossibleLocations());
+			this.optimalMaterialLocations = new HashMap<Material, ArrayList<LocationSQL>>();
 		} catch (Exception e) {
-			Bukkit.getLogger().warning("[OreModifier] SQLite errors on ChunkWorkerThread init! Shutting down the plugin.");
+			Bukkit.getLogger().warning("[OreModifier] SQLite errors on ChunkWorkerThread initizalition! Shutting down the plugin.");
 			Bukkit.getLogger().warning("[OreModifier] "+e.getCause().getMessage());
 			Bukkit.getServer().getPluginManager().disablePlugin(instance);
 		}
@@ -96,10 +102,16 @@ public class ChunkWorkerThread implements Runnable {
 	}
 
 	public void run() {
+		Bukkit.getLogger().info("[OreModifier] Starting ChunkWorkerThread...");
+		boolean regenerate;
 		this.running = true;
-		while(enabled) {
+		while(this.enabled) {
+			regenerate = false; //reset this
 			
+			//regenerate the optimal material locations
+			if(regenerate) this.regenerate();
 		}
+		Bukkit.getLogger().info("[OreModifier] Stopping ChunkWorkerThread...");
 		this.running = false;
 	}
 	
@@ -118,20 +130,55 @@ public class ChunkWorkerThread implements Runnable {
 		
 		ArrayList<LocationSQL> temp;
 		
-		if(possibleLocations.containsKey(chunk)) {
-			temp = possibleLocations.get(chunk); //pull the arraylist out
+		if(this.possibleLocations.containsKey(chunk)) {
+			temp = this.possibleLocations.get(chunk); //pull the arraylist out
 			temp.add(location); //add the location
-			possibleLocations.put(chunk, temp); //put it all back in
+			this.possibleLocations.put(chunk, temp); //put it all back in
 		} else {
 			temp = new ArrayList<LocationSQL>(); //init the ArrayList
 			temp.add(location); //add the location
-			possibleLocations.put(chunk, temp); //put it in the HashMap
+			this.possibleLocations.put(chunk, temp); //put it in the HashMap
+		}
+	}
+	
+	public synchronized void regenerate() {
+		Iterator<Map.Entry<ChunkSQL, ArrayList<LocationSQL>>> it = possibleLocations.entrySet().iterator();
+		
+		while(it.hasNext()) {
+			Map.Entry<ChunkSQL, ArrayList<LocationSQL>> set = it.next();
+			ChunkSQL csql = set.getKey();
+			Iterator<LocationSQL> it2 = set.getValue().iterator();
+			int highestBlock = 0;
+			int chunkBlockX, chunkBlockZ;
+			
+			chunkBlockX = csql.getX() << 4;
+			chunkBlockZ = csql.getZ() << 4;
+			
+			//Get the highest block in the chunk
+			for(int x = chunkBlockX; x < chunkBlockX+16; x++) {
+				for(int z = chunkBlockZ; z < chunkBlockZ+16; z++) {
+					int temp = Bukkit.getWorld(csql.getWorldName()).getHighestBlockYAt(x, z);
+					if(temp > highestBlock) highestBlock = temp;
+				}
+			}
+			
+			//Iterate through the locations and place them in the optimal places
+			while(it2.hasNext()) {
+				LocationSQL location = it2.next();
+				int y = location.getY();
+				
+				if(y < highestBlock && y > 46) { //Coal
+					ArrayList<LocationSQL> temploc = this.optimalMaterialLocations.get(Material.COAL);
+					temploc.add(location);
+					this.optimalMaterialLocations.put(Material.COAL, temploc);
+				}
+			}
 		}
 	}
 	
 	public void shutdown() {
 		this.enabled = false;
-		while(running) { ; } //wait for the thread to shutdown
+		while(this.running) { ; } //wait for the thread to shutdown
 		
 		try {
 			this.saveSQL();
@@ -140,14 +187,14 @@ public class ChunkWorkerThread implements Runnable {
 			Bukkit.getLogger().warning("[OreModifier] "+e.getCause().getMessage());
 		}
 		
-		possibleLocations = null;
-		queue = null;
+		this.possibleLocations = null;
+		this.queue = null;
 	}
 	
 	private void saveSQL() throws Exception {
 		//remove the old data, if any exists
-		conn.createStatement().execute("DELETE FROM locations;");
-		conn.createStatement().execute("DELETE FROM chunks;");
+		this.conn.createStatement().execute("DELETE FROM locations;");
+		this.conn.createStatement().execute("DELETE FROM chunks;");
 		
 		Iterator<Map.Entry<ChunkSQL, ArrayList<LocationSQL>>> it1 = possibleLocations.entrySet().iterator();
 		

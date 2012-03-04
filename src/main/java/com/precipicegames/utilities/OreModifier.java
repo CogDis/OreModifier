@@ -39,20 +39,27 @@
 package com.precipicegames.utilities;
 
 import java.io.File;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChunkSnapshot;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class OreModifier extends JavaPlugin {
+public class OreModifier extends JavaPlugin implements Runnable {
 	
 	public LinkedList<Integer> blockID = new LinkedList<Integer>();
 	public int chance;
 	public WorldChunkListener listener = new WorldChunkListener(this);
 	public ChunkWorkerThread thread;
 	public File dataFile;
+	private HashMap<String, Integer> tID = new HashMap<String, Integer>();
+	public ConcurrentLinkedQueue<ChunkSnapshot> queue;
+	
+	private boolean running = false;
 
 	public void onLoad() {
 		YamlConfiguration config = new YamlConfiguration();
@@ -89,11 +96,18 @@ public class OreModifier extends JavaPlugin {
 	}
 
 	public void onEnable() {
+		int id1, id2;
 		this.getServer().getPluginManager().registerEvents(listener, this);
+		Bukkit.getLogger().info("[OreModifier] Starting up Threads...");
+		id1 = this.getServer().getScheduler().scheduleSyncRepeatingTask(this, this, 1000L, 100L);
+		id2 = this.getServer().getScheduler().scheduleAsyncDelayedTask(this, this.thread, 500L);
 		Bukkit.getLogger().info("[OreModifier] I will now check for visible ores when a chunk is generated");
 	}
 
 	public void onDisable() {
+		this.thread.shutdown();
+		while(this.running) { ; } //Wait for the thread to stop, if it's running
+		
 		YamlConfiguration config = new YamlConfiguration();
 		
 		config.set("OreModifier.ores", blockID);
@@ -105,5 +119,13 @@ public class OreModifier extends JavaPlugin {
 		    Bukkit.getLogger().warning("[OreModifier] Error saving config.yml! Aborting save!");
 		    Bukkit.getLogger().info(e.getCause().getMessage());
 		}
+	}
+	
+	/* This is run in the main thread so the server doesn't bitch about the tick list becoming out of sync */
+	public void run() {
+		this.running = true;
+		//I
+		
+		this.running = false;
 	}
 }
