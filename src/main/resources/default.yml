@@ -1,9 +1,32 @@
+# OreModifier Alpha
+# Default Configuration Values
+
+# Chance values are anywhere between 0-100.
+# Anything below 0, or above 100, will be treated as 0 and 100 respectively
+
 OreModifier:
   ores:
-    - 14
-    - 15
-    - 21
-    - 56
-    - 73
-    - 74
-  chance: 20
+    COAL:
+      chance: 0 #Chance of 0 means ignore
+    IRON_ORE:
+      chance: 20 #1 in 5 chance to move the ore
+    GOLD_ORE:
+      chance: 20
+    LAPIS_ORE:
+      chance: 50
+      override: #Override where the plugin places the ores
+        miny: 1
+        maxy: 40
+    REDSTONE_ORE:
+      chance: 30
+      override:
+        miny: 1
+        maxy: 30
+    DIAMOND_ORE:
+      chance: 50
+#    CUSTOM: #Custom Ores to check for
+#      COPPER: #Copper Ore from a future mod
+#        id: 123 #Custom Block ID to check
+#        chance: 10
+#        miny: 30
+#        maxy: HIGHEST_BLOCK #HIGHEST_BLOCK is the highest block in the chunk (aka anywhere)
