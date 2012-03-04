@@ -38,14 +38,8 @@
 
 package com.precipicegames.utilities;
 
-import java.util.ArrayList;
 import java.util.Random;
 
-import org.bukkit.Chunk;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.world.ChunkPopulateEvent;
@@ -57,61 +51,12 @@ public class WorldChunkListener implements Listener {
 	
 	public WorldChunkListener(OreModifier instance) {
 		this.plugin = instance;
-		this.random = new Random(); //TODO: make world independent
+		this.random = new Random();
 	}
 	
 	@EventHandler
 	public void oreChecker(ChunkPopulateEvent e) {
-		Chunk chunk = e.getChunk();
-		ArrayList<Location> possibleLocations = new ArrayList<Location>();
 		
-		for(int y = 0; y < chunk.getWorld().getMaxHeight(); y++) {
-			for(int z = 0; z < 16; z++) {
-				for(int x = 0; x < 16; x++) {
-					Block block = chunk.getBlock(x, y, z);
-					Integer id = block.getTypeId();
-					//TODO: Add Ignore list
-					if(block.getType().equals(Material.AIR)) continue;
-					
-					//The blockfaces to check against
-					boolean up, down, north, south, east, west;
-					/*
-					face1 = block.getRelative(BlockFace.UP).getType().equals(Material.AIR);
-					face2 = block.getRelative(BlockFace.DOWN).getType().equals(Material.AIR);
-					face3 = block.getRelative(BlockFace.NORTH).getType().equals(Material.AIR);
-					face4 = block.getRelative(BlockFace.SOUTH).getType().equals(Material.AIR);
-					face5 = block.getRelative(BlockFace.EAST).getType().equals(Material.AIR);
-					face6 = block.getRelative(BlockFace.WEST).getType().equals(Material.AIR);
-					*/
-					
-					if(y >= chunk.getWorld().getMaxHeight()-1) up = false;
-					else up = (block.getRelative(BlockFace.UP).getTypeId() == 0);
-					if(y <= 1) down = false;
-					else down = (block.getRelative(BlockFace.DOWN).getTypeId() == 0);
-					north = (block.getRelative(BlockFace.NORTH).getTypeId() == 0);
-					south = (block.getRelative(BlockFace.SOUTH).getTypeId() == 0);
-					east = (block.getRelative(BlockFace.EAST).getTypeId() == 0);
-					west = (block.getRelative(BlockFace.WEST).getTypeId() == 0);
-					
-					if(plugin.blockID.contains(id)) {
-						if(up || down || north || south || east || west) {
-							if(random.nextInt(100) <= plugin.chance) {
-								int index = random.nextInt(possibleLocations.size());
-								
-								Location newLoc = possibleLocations.get(index);
-								newLoc.getWorld().getBlockAt(newLoc).setType(block.getType());
-								block.setType(Material.STONE);
-								possibleLocations.remove(index);
-							}
-						}
-					} else if(block.getType().equals(Material.STONE)) {
-						if(up || down || north || south || east || west) continue;
-						else possibleLocations.add(block.getLocation());
-					}
-				}
-			}
-		}
-		possibleLocations = null;
 	}
 	
 }

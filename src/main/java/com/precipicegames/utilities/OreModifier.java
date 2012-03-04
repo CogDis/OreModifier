@@ -40,12 +40,12 @@ package com.precipicegames.utilities;
 
 import java.io.File;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChunkSnapshot;
+import org.bukkit.Material;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -57,6 +57,7 @@ public class OreModifier extends JavaPlugin implements Runnable {
 	public ChunkWorkerThread thread;
 	public File dataFile;
 	private HashMap<String, Integer> tID = new HashMap<String, Integer>();
+	public HashMap<Material, HashMap<String, Integer>> materialProperties;
 	public ConcurrentLinkedQueue<ChunkSnapshot> queue;
 	
 	private boolean running = false;
@@ -64,7 +65,6 @@ public class OreModifier extends JavaPlugin implements Runnable {
 	public void onLoad() {
 		YamlConfiguration config = new YamlConfiguration();
 		this.dataFile = new File(this.getDataFolder(), "config.yml");
-		this.thread = new ChunkWorkerThread(this.getDataFolder(), this);
 
 		if(this.dataFile != null && this.dataFile.exists()) {
 			try {
@@ -79,53 +79,52 @@ public class OreModifier extends JavaPlugin implements Runnable {
 				Bukkit.getLogger().warning("[OreModifier] Error loading the default config.yml from the jar! Defaulting values...");
 			}
 		}
-
-		Iterator<String> temp = config.getStringList("OreModifier.ores").iterator();
-		this.chance = config.getInt("OreModifier.chance", 20);
-		while(temp.hasNext()) {
-			String preblockID = temp.next();
-			Integer postblockID = Integer.parseInt(preblockID);
-			
-			if(!this.blockID.contains(postblockID)) {
-				this.blockID.add(Integer.parseInt(preblockID));
-			} else {
-				Bukkit.getLogger().warning("[OreModifier] Block ID "+preblockID+" already exists, ignoring it...");
-			}
-		}
-
+		
+		this.materialProperties = new HashMap<Material, HashMap<String, Integer>>(this.loadMaterialProperties());
+		this.thread = new ChunkWorkerThread(this.getDataFolder(), this); //Load this last!
 	}
 
 	public void onEnable() {
-		int id1, id2;
+		int id1, id2; //Thread process ID's
 		this.getServer().getPluginManager().registerEvents(listener, this);
 		Bukkit.getLogger().info("[OreModifier] Starting up Threads...");
 		id1 = this.getServer().getScheduler().scheduleSyncRepeatingTask(this, this, 1000L, 100L);
 		id2 = this.getServer().getScheduler().scheduleAsyncDelayedTask(this, this.thread, 500L);
-		Bukkit.getLogger().info("[OreModifier] I will now check for visible ores when a chunk is generated");
+		if(id1 == -1 || id2 == -1) {
+			Bukkit.getLogger().warning("[OreModifier] There was an issue starting the threads! Shutting down...");
+			Bukkit.getPluginManager().disablePlugin(this);
+		} else { //Add thread process ID's to the HashMap
+			this.tID.put("MAIN", id1);
+			this.tID.put("ASYNC", id2);
+			Bukkit.getLogger().info("[OreModifier] I will now check for visible ores when a chunk is loaded");
+		}
 	}
 
 	public void onDisable() {
 		this.thread.shutdown();
 		while(this.running) { ; } //Wait for the thread to stop, if it's running
-		
+		//TODO: save and nullify stuffs
+	}
+	
+	private HashMap<Material, HashMap<String, Integer>> loadMaterialProperties() {
+		HashMap<Material, HashMap<String, Integer>> temp = new HashMap<Material, HashMap<String, Integer>>();
 		YamlConfiguration config = new YamlConfiguration();
-		
-		config.set("OreModifier.ores", blockID);
-		config.set("OreModifier.chance", this.chance);
-		
-		try {
-		    config.save(dataFile);
-		} catch (Exception e) {
-		    Bukkit.getLogger().warning("[OreModifier] Error saving config.yml! Aborting save!");
-		    Bukkit.getLogger().info(e.getCause().getMessage());
-		}
+		//TODO: this
+		return temp;
 	}
 	
 	/* This is run in the main thread so the server doesn't bitch about the tick list becoming out of sync */
 	public void run() {
 		this.running = true;
-		//I
 		
+		//Sanity Check the async Thread
+		int asyncThread = this.tID.get("ASYNC");
+		if(!Bukkit.getServer().getScheduler().isCurrentlyRunning(asyncThread)) {
+			this.running = false;
+			Bukkit.getLogger().warning("[OreModifier] The async thread isn't running! Shutting down...");
+			Bukkit.getPluginManager().disablePlugin(this);
+			return;
+		}
 		this.running = false;
 	}
 }

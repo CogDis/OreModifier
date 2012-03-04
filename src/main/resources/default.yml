@@ -15,12 +15,12 @@ OreModifier:
     LAPIS_ORE:
       chance: 50
       override: #Override where the plugin places the ores
-        miny: 1
+        miny: 3
         maxy: 40
     REDSTONE_ORE:
       chance: 30
       override:
-        miny: 1
+        miny: 3
         maxy: 30
     DIAMOND_ORE:
       chance: 50
