@@ -46,28 +46,35 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChunkSnapshot;
+import org.bukkit.Location;
 
 import com.precipicegames.utilities.misc.ChunkSQL;
 import com.precipicegames.utilities.misc.LocationSQL;
 
 public class ChunkWorkerThread implements Runnable {
 	
-	public static HashMap<ChunkSQL, ArrayList<LocationSQL>> possibleLocations;
-	public static ConcurrentLinkedQueue<ChunkSnapshot> queue;
+	private static HashMap<ChunkSQL, ArrayList<LocationSQL>> possibleLocations;
+	private static ConcurrentLinkedQueue<ChunkSnapshot> queue;
 	private File dataDir;
 	private Connection conn;
 	private String locAdd = "INSERT INTO locations(locx, locy, locz, worldname, lochash) VALUES(?, ?, ?, ?, ?);";
 	private String locGet = "SELECT * FROM locations WHERE lochash=?;";
 	private String locGetAll = "SELECT * FROM locations;";
 	private String locRem = "DELETE FROM locations WHERE locx=? AND locy=? AND locz=?;";
-	private String chunkAdd = "INSERT INTO chunk(chunkx, chunkz, worldname, cciphash) VALUES(?, ?, ?, ?);";
-	private String chunkGet = "SELECT * FROM chunk WHERE cciphash=?;";
+	private String chunkAdd = "INSERT INTO chunk(chunkx, chunkz, worldname, csqlhash) VALUES(?, ?, ?, ?);";
+	private String chunkGet = "SELECT * FROM chunk WHERE csqlhash=?;";
 	private String chunkGetAll = "SELECT * FROM chunk;";
-	private String chunkRem = "DELETE FROM chunk WHERE chunkx=? AND chunky=?;";
+	private String chunkRem = "DELETE FROM chunk WHERE chunkx=? AND chunkz=?;";
+	
+	//booleans to prevent issues with thread shutdown
+	private boolean enabled = false;
+	private boolean running = false;
 	
 	public ChunkWorkerThread(File dataDir, OreModifier instance) {
 		this.dataDir = new File(dataDir+"/Chunk/");
@@ -85,18 +92,104 @@ public class ChunkWorkerThread implements Runnable {
 			Bukkit.getLogger().warning("[OreModifier] "+e.getCause().getMessage());
 			Bukkit.getServer().getPluginManager().disablePlugin(instance);
 		}
+		this.enabled = true;
 	}
 
 	public void run() {
-		// TODO Auto-generated method stub
-
+		this.running = true;
+		while(enabled) {
+			
+		}
+		this.running = false;
 	}
 	
-	public static void shutdown() {
+	public synchronized boolean addToQueue(ChunkSnapshot snapshot) {
+		return queue.add(snapshot);
+	}
+	
+	public synchronized void addToPossibleLocations(Location loc) {
+		int chunkx, chunkz;
+		LocationSQL location = new LocationSQL(loc.getX(), loc.getY(), loc.getZ(), loc.getWorld().getName());
 		
+		chunkx = loc.getBlockX() >> 4;
+		chunkz = loc.getBlockZ() >> 4;
+		
+		ChunkSQL chunk = new ChunkSQL(chunkx, chunkz, loc.getWorld().getName());
+		
+		ArrayList<LocationSQL> temp;
+		
+		if(possibleLocations.containsKey(chunk)) {
+			temp = possibleLocations.get(chunk); //pull the arraylist out
+			temp.add(location); //add the location
+			possibleLocations.put(chunk, temp); //put it all back in
+		} else {
+			temp = new ArrayList<LocationSQL>(); //init the ArrayList
+			temp.add(location); //add the location
+			possibleLocations.put(chunk, temp); //put it in the HashMap
+		}
+	}
+	
+	public void shutdown() {
+		this.enabled = false;
+		while(running) { ; } //wait for the thread to shutdown
+		
+		try {
+			this.saveSQL();
+		} catch (Exception e) {
+			Bukkit.getLogger().warning("[OreModifier] SQLite errors on ChunkWorkerThread shutdown! I will recover what I can next boot...");
+			Bukkit.getLogger().warning("[OreModifier] "+e.getCause().getMessage());
+		}
 		
 		possibleLocations = null;
 		queue = null;
+	}
+	
+	private void saveSQL() throws Exception {
+		//remove the old data, if any exists
+		conn.createStatement().execute("DELETE FROM locations;");
+		conn.createStatement().execute("DELETE FROM chunks;");
+		
+		Iterator<Map.Entry<ChunkSQL, ArrayList<LocationSQL>>> it1 = possibleLocations.entrySet().iterator();
+		
+		PreparedStatement statement = this.conn.prepareStatement(this.locAdd);
+		
+		while(it1.hasNext()) {
+			Map.Entry<ChunkSQL, ArrayList<LocationSQL>> set = it1.next();
+			Iterator<LocationSQL> it2 = set.getValue().iterator();
+			
+			while(it2.hasNext()) {
+				LocationSQL location = it2.next();
+				statement.setInt(1, location.getX());
+				statement.setInt(2, location.getY());
+				statement.setInt(3, location.getZ());
+				statement.setString(4, location.getWorldName());
+				statement.setInt(5, location.hashCode());
+				statement.addBatch();
+			}
+		}
+		statement.executeBatch();
+		
+		Iterator<ChunkSnapshot> it2 = queue.iterator();
+		statement = this.conn.prepareStatement(this.chunkAdd);
+		
+		while(it2.hasNext()) {
+			ChunkSnapshot cs = it2.next();
+			ChunkSQL csql = new ChunkSQL(cs.getX(), cs.getZ(), cs.getWorldName());
+			statement.setInt(1, csql.getX());
+			statement.setInt(2, csql.getZ());
+			statement.setString(3, csql.getWorldName());
+			statement.setInt(4, csql.hashCode());
+			statement.addBatch();
+		}
+		statement.executeBatch();
+		
+		it1 = null;
+		it2 = null;
+		statement = null;
+		
+		this.conn.commit();
+		this.conn.close();
+		this.conn = null;
 	}
 	
 	private Collection<ChunkSnapshot> loadQueue() throws Exception {
@@ -121,7 +214,43 @@ public class ChunkWorkerThread implements Runnable {
 	}
 	
 	private HashMap<ChunkSQL, ArrayList<LocationSQL>> loadPossibleLocations() throws Exception {
-		return null;
+		HashMap<ChunkSQL, ArrayList<LocationSQL>> temp = new HashMap<ChunkSQL, ArrayList<LocationSQL>>();
+		
+		PreparedStatement statement = conn.prepareStatement(locGetAll);
+		ResultSet set = statement.executeQuery();
+		
+		if(set.first()) {
+			set.beforeFirst(); //Position the pointer before the first row
+			while(set.next()) {
+				int chunkx, chunkz, x, y, z;
+				String worldName;
+				
+				x = set.getInt("locx");
+				y = set.getInt("locy");
+				z = set.getInt("locz");
+				worldName = set.getString("worldname");
+				
+				LocationSQL location = new LocationSQL(x, y, z, worldName);
+				
+				chunkx = x >> 4;
+				chunkz = z >> 4;
+				
+				ChunkSQL chunk = new ChunkSQL(chunkx, chunkz, worldName);
+				
+				ArrayList<LocationSQL> temp2;
+				
+				if(temp.containsKey(chunk)) {
+					temp2 = temp.get(chunk); //pull the arraylist out
+					temp2.add(location); //add the location
+					temp.put(chunk, temp2); //put it all back in
+				} else {
+					temp2 = new ArrayList<LocationSQL>(); //init the ArrayList
+					temp2.add(location); //add the location
+					temp.put(chunk, temp2); //put it in the HashMap
+				}
+			}
+		}
+		return temp;
 	}
 
 }
