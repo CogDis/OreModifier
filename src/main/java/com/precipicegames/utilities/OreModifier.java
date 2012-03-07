@@ -40,25 +40,35 @@ package com.precipicegames.utilities;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.ChunkSnapshot;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import com.precipicegames.utilities.misc.ChunkSQL;
+import com.precipicegames.utilities.misc.LocationSQL;
+import com.precipicegames.utilities.misc.OreChangeResult;
 
 public class OreModifier extends JavaPlugin implements Runnable {
 	
 	public LinkedList<Integer> blockID = new LinkedList<Integer>();
 	public int chance;
+	public HashMap<String, Integer> loadedChunks;
 	public WorldChunkListener listener = new WorldChunkListener(this);
 	public ChunkWorkerThread thread;
 	public File dataFile;
 	private HashMap<String, Integer> tID = new HashMap<String, Integer>();
 	public HashMap<Material, HashMap<String, Integer>> materialProperties;
-	public ConcurrentLinkedQueue<ChunkSnapshot> queue;
+	public HashMap<String, ConcurrentLinkedQueue<OreChangeResult>> queue;
 	
 	private boolean running = false;
 
@@ -87,6 +97,7 @@ public class OreModifier extends JavaPlugin implements Runnable {
 	public void onEnable() {
 		int id1, id2; //Thread process ID's
 		this.getServer().getPluginManager().registerEvents(listener, this);
+		this.loadedChunks = new HashMap<String, Integer>(this.getLoadedChunks()); 
 		Bukkit.getLogger().info("[OreModifier] Starting up Threads...");
 		id1 = this.getServer().getScheduler().scheduleSyncRepeatingTask(this, this, 1000L, 100L);
 		id2 = this.getServer().getScheduler().scheduleAsyncDelayedTask(this, this.thread, 500L);
@@ -98,12 +109,36 @@ public class OreModifier extends JavaPlugin implements Runnable {
 			this.tID.put("ASYNC", id2);
 			Bukkit.getLogger().info("[OreModifier] I will now check for visible ores when a chunk is loaded");
 		}
+		
 	}
 
 	public void onDisable() {
 		this.thread.shutdown();
 		while(this.running) { ; } //Wait for the thread to stop, if it's running
 		//TODO: save and nullify stuffs
+	}
+	
+	private HashMap<String, Integer> getLoadedChunks() {
+		HashMap<String, Integer> temp = new HashMap<String, Integer>();
+		List<World> worlds = Bukkit.getWorlds();
+		
+		for(World world : worlds) {
+			int loaded = 0;
+			Chunk[] chunks = world.getLoadedChunks();
+			
+			for(Chunk chunk : chunks) {
+				ChunkSnapshot snapshot = chunk.getChunkSnapshot();
+				ChunkSQL chunksql = new ChunkSQL(snapshot.getX(), snapshot.getZ(), snapshot.getWorldName());
+				
+				//Check to make sure we are not re-adding a marked chunk back into the queue
+				if(!this.thread.hasInQueue(snapshot) && !this.thread.isChunkMarked(chunksql)) thread.addToQueue(snapshot); 
+				loaded++;
+			}
+			
+			temp.put(world.getName(), loaded);
+		}
+		
+		return temp;
 	}
 	
 	private HashMap<Material, HashMap<String, Integer>> loadMaterialProperties() {
@@ -116,6 +151,22 @@ public class OreModifier extends JavaPlugin implements Runnable {
 	/* This is run in the main thread so the server doesn't bitch about the tick list becoming out of sync */
 	public void run() {
 		this.running = true;
+		List<World> worlds = Bukkit.getWorlds();
+		//Iterate through all loaded worlds
+		for(World world : worlds) {
+			//Make sure there are enough loaded chunks to get a nice spread on block placements
+			int loadedChunks = this.loadedChunks.get(world.getName());
+			if(loadedChunks <= 19) continue; //if there are less then 20 chunks loaded in the world, continue to the next world
+			
+			Queue<OreChangeResult> worldQueue = this.queue.get(world.getName());
+			Iterator<OreChangeResult> it = worldQueue.iterator();
+			
+			while(it.hasNext()) { //cycle through the OreChangeResults and make them live
+				OreChangeResult ocr = it.next();
+				LocationSQL loc = ocr.getLocation();
+				Bukkit.getWorld(ocr.getWorldName()).getBlockAt(loc.getX(), loc.getY(), loc.getZ()).setTypeId(ocr.getToTypeID());
+			}
+		}
 		
 		//Sanity Check the async Thread
 		int asyncThread = this.tID.get("ASYNC");

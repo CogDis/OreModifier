@@ -38,25 +38,33 @@
 
 package com.precipicegames.utilities;
 
-import java.util.Random;
-
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.world.ChunkPopulateEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.event.world.ChunkUnloadEvent;
+
+import com.precipicegames.utilities.misc.ChunkSQL;
 
 public class WorldChunkListener implements Listener {
 	
 	private OreModifier plugin;
-	private Random random;
 	
 	public WorldChunkListener(OreModifier instance) {
 		this.plugin = instance;
-		this.random = new Random();
 	}
 	
 	@EventHandler
-	public void oreChecker(ChunkPopulateEvent e) {
-		
+	public void chunkLoadChecker(ChunkLoadEvent e) {
+		ChunkSQL chunk = new ChunkSQL(e.getChunk().getX(), e.getChunk().getZ(), e.getChunk().getWorld().getName());
+		if(!this.plugin.thread.isChunkMarked(chunk)) { //Mark the thread if it hasn't been added
+			int loadedChunksForWorld = this.plugin.loadedChunks.get(e.getWorld().getName());
+			this.plugin.loadedChunks.put(e.getWorld().getName(), loadedChunksForWorld++);
+		}
 	}
 	
+	@EventHandler
+	public void chunkUnloadChecker(ChunkUnloadEvent e) {
+		int loadedChunksForWorld = this.plugin.loadedChunks.get(e.getWorld().getName());
+		this.plugin.loadedChunks.put(e.getWorld().getName(), loadedChunksForWorld--);
+	}
 }

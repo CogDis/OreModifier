@@ -63,6 +63,7 @@ public class ChunkWorkerThread implements Runnable {
 
 	//The caches for different things
 	private HashMap<ChunkSQL, ArrayList<LocationSQL>> possibleLocations;
+	private ArrayList<ChunkSQL> markedChunks;
 	private ConcurrentLinkedQueue<ChunkSnapshot> queue;
 	private HashMap<Material, ArrayList<LocationSQL>> optimalMaterialLocations;
 	private HashMap<Material, HashMap<String, Integer>> materialProperties;
@@ -72,13 +73,11 @@ public class ChunkWorkerThread implements Runnable {
 	//Database Stuff
 	private Connection conn;
 	private String locAdd = "INSERT INTO locations(locx, locy, locz, worldname, lochash) VALUES(?, ?, ?, ?, ?);";
-	private String locGet = "SELECT * FROM locations WHERE lochash=?;";
 	private String locGetAll = "SELECT * FROM locations;";
-	private String locRem = "DELETE FROM locations WHERE locx=? AND locy=? AND locz=?;";
 	private String chunkAdd = "INSERT INTO chunk(chunkx, chunkz, worldname, csqlhash) VALUES(?, ?, ?, ?);";
-	private String chunkGet = "SELECT * FROM chunk WHERE csqlhash=?;";
 	private String chunkGetAll = "SELECT * FROM chunk;";
-	private String chunkRem = "DELETE FROM chunk WHERE chunkx=? AND chunkz=?;";
+	private String markChunkAdd = "INSERT INTO marked_chunk(chunkx, chunkz, worldname, csqlhash) VALUES(?, ?, ?, ?);";
+	private String markChunkGetAll = "SELECT * FROM marked_chunk;";
 	//booleans to prevent issues with thread shutdown
 	private boolean enabled = false;
 	private boolean running = false;
@@ -91,11 +90,14 @@ public class ChunkWorkerThread implements Runnable {
 			Statement statement = conn.createStatement();
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS chunk (id INTEGER PRIMARY KEY, chunkx INTEGER, chunkz INTEGER, worldname TEXT, cciphash INTEGER UNIQUE);");
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, locx INTEGER, locy INTEGER, locz INTEGER, worldname TEXT, lochash INTEGER UNIQUE);");
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS marked_chunk (id INTEGER PRIMARY KEY, chunkx INTEGER, chunkz INTEGER, worldname TEXT, cciphash INTEGER UNIQUE);");
 
 			//Load up the data, if available
 			this.queue = new ConcurrentLinkedQueue<ChunkSnapshot>(this.loadQueue());
+			this.markedChunks = new ArrayList<ChunkSQL>(this.loadMarkedChunks());
 			this.possibleLocations = new HashMap<ChunkSQL, ArrayList<LocationSQL>>(this.loadPossibleLocations());
 			this.optimalMaterialLocations = new HashMap<Material, ArrayList<LocationSQL>>();
+
 			this.materialProperties = new HashMap<Material, HashMap<String, Integer>>(instance.materialProperties);
 			//Populate the HashSet with the vanilla ores
 			this.materialTypes.add(Material.COAL_ORE);
@@ -127,8 +129,22 @@ public class ChunkWorkerThread implements Runnable {
 		this.running = false;
 	}
 
+	public synchronized boolean hasInQueue(ChunkSnapshot snapshot) {
+		return this.queue.contains(snapshot);
+	}
+
 	public synchronized boolean addToQueue(ChunkSnapshot snapshot) {
-		return queue.add(snapshot);
+		return this.queue.offer(snapshot);
+	}
+
+	public synchronized boolean isChunkMarked(ChunkSQL chunk) {
+		if(this.markedChunks.contains(chunk)) {
+			return true;
+		} else {
+			this.markedChunks.add(chunk);
+			return false;
+		}
+		
 	}
 
 	public synchronized void addToPossibleLocations(Location loc) {
@@ -154,7 +170,7 @@ public class ChunkWorkerThread implements Runnable {
 	}
 
 	public synchronized void regenerate() {
-		Iterator<Map.Entry<ChunkSQL, ArrayList<LocationSQL>>> it = possibleLocations.entrySet().iterator();
+		Iterator<Map.Entry<ChunkSQL, ArrayList<LocationSQL>>> it = this.possibleLocations.entrySet().iterator();
 		HashMap<String, Integer> properties;
 
 		while(it.hasNext()) {
@@ -182,7 +198,7 @@ public class ChunkWorkerThread implements Runnable {
 
 				//Thank you Muddr for this, would of never thought about it
 				for (Material ore : this.materialTypes) {
-					properties = materialProperties.get(ore);
+					properties = this.materialProperties.get(ore);
 					int maxy = properties.get("maxy");
 					int miny = properties.get("miny");
 					int chance = properties.get("chance");
@@ -238,7 +254,7 @@ public class ChunkWorkerThread implements Runnable {
 		}
 		statement.executeBatch();
 
-		Iterator<ChunkSnapshot> it2 = queue.iterator();
+		Iterator<ChunkSnapshot> it2 = this.queue.iterator();
 		statement = this.conn.prepareStatement(this.chunkAdd);
 
 		while(it2.hasNext()) {
@@ -261,10 +277,32 @@ public class ChunkWorkerThread implements Runnable {
 		this.conn = null;
 	}
 
+	private Collection<ChunkSQL> loadMarkedChunks() throws Exception {
+		Collection<ChunkSQL> temp = new ArrayList<ChunkSQL>();
+
+		PreparedStatement statement = conn.prepareStatement(this.markChunkGetAll);
+		ResultSet set = statement.executeQuery();
+
+		if(set.first()) {
+			set.beforeFirst(); //Position the pointer before the first row
+			while(set.next()) {
+				int chunkx = set.getInt("chunkx");
+				int chunkz = set.getInt("chunkz");
+				String worldName = set.getString("worldname");
+
+				ChunkSQL chunk = new ChunkSQL(chunkx, chunkz, worldName);
+				temp.add(chunk);
+			}
+		}
+
+		return temp;
+
+	}
+
 	private Collection<ChunkSnapshot> loadQueue() throws Exception {
 		Collection<ChunkSnapshot> temp = new ConcurrentLinkedQueue<ChunkSnapshot>();
 
-		PreparedStatement statement = conn.prepareStatement(chunkGetAll);
+		PreparedStatement statement = conn.prepareStatement(this.chunkGetAll);
 		ResultSet set = statement.executeQuery();
 
 		if(set.first()) {
@@ -285,7 +323,7 @@ public class ChunkWorkerThread implements Runnable {
 	private HashMap<ChunkSQL, ArrayList<LocationSQL>> loadPossibleLocations() throws Exception {
 		HashMap<ChunkSQL, ArrayList<LocationSQL>> temp = new HashMap<ChunkSQL, ArrayList<LocationSQL>>();
 
-		PreparedStatement statement = conn.prepareStatement(locGetAll);
+		PreparedStatement statement = this.conn.prepareStatement(this.locGetAll);
 		ResultSet set = statement.executeQuery();
 
 		if(set.first()) {
@@ -301,9 +339,8 @@ public class ChunkWorkerThread implements Runnable {
 
 				LocationSQL location = new LocationSQL(x, y, z, worldName);
 
-				chunkx = x >> 4;
-				chunkz = z >> 4;
-	
+				chunkx = x >> 4; chunkz = z >> 4;
+
 				ChunkSQL chunk = new ChunkSQL(chunkx, chunkz, worldName);
 	
 				ArrayList<LocationSQL> temp2;
