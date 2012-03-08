@@ -49,6 +49,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.bukkit.Bukkit;
@@ -100,6 +101,7 @@ public class ChunkWorkerThread implements Runnable {
 
 			this.materialProperties = new HashMap<Material, HashMap<String, Integer>>(instance.materialProperties);
 			//Populate the HashSet with the vanilla ores
+			//this.materialTypes.add(Material.STONE);
 			this.materialTypes.add(Material.COAL_ORE);
 			this.materialTypes.add(Material.IRON_ORE);
 			this.materialTypes.add(Material.GOLD_ORE);
@@ -117,14 +119,103 @@ public class ChunkWorkerThread implements Runnable {
 	public void run() {
 		Bukkit.getLogger().info("[OreModifier] Starting ChunkWorkerThread...");
 		boolean regenerate;
+		boolean firstrun = true;
+		int runs = 0;
 		this.running = true;
+		Random random = new Random(System.nanoTime());
+		
 		while(this.enabled) {
 			regenerate = false; //reset this
-
-
-			//regenerate the optimal material locations
-			if(regenerate) this.regenerate();
+			//If this is the first run, generate the optimal locations and continue
+			if(firstrun) {
+				Bukkit.getLogger().warning("[OreModifier] Generating the optimal placements...");
+				firstrun = false;
+				this.regenerate();
+				continue;
+			} //else try to pull a snapshot
+			
+			ChunkSnapshot snapshot = this.queue.poll();
+			if(snapshot != null) {
+				ChunkSQL chunk = new ChunkSQL(snapshot.getX(), snapshot.getZ(), snapshot.getWorldName());
+				int x, tempx, y = 0, tempy, z, tempz;
+				//get block x and z
+				x = snapshot.getX() << 4;
+				z = snapshot.getZ() << 4;
+				
+				//Get the highest block in the chunk
+				for(tempx = x; tempx < x+16; tempx++) {
+					for(tempz = z; tempz < z+16; tempz++) {
+						int temp = snapshot.getHighestBlockYAt(tempx, tempz);
+						if(temp > y) y = temp;
+					}
+				}
+				
+				//now that we got the highest y, go through the snapshot and get ore locations
+				for(tempx = x; tempx < x+16; tempx++) {
+					for(tempz = z; tempz < z+16; tempz++) {
+						for(tempy = y; tempy > 3; tempy--) {
+							//TODO: make this more efficient
+							int id = snapshot.getBlockTypeId(tempx, tempy, tempz);
+							Material mat = Material.getMaterial(id);
+							
+							//Scan against materials for common ones that are not stone
+							if(mat.equals(Material.AIR) || mat.equals(Material.CLAY) || mat.equals(Material.SAND) ||
+									mat.equals(Material.BEDROCK) || mat.equals(Material.GRAVEL) || mat.equals(Material.LOG) ||
+									mat.equals(Material.LEAVES) || mat.equals(Material.GRASS) || mat.equals(Material.DIRT) ||
+									mat.equals(Material.LONG_GRASS))
+								continue;
+							
+							//Scan around the block
+							boolean aroundAir = false;
+							for(int scanx = tempx-1; scanx < tempx+1; scanx++) {
+								for(int scany = tempy-1; scany < tempy+1; scany++) {
+									for(int scanz = tempz-1; scanz < tempz+1; scanz++) {
+										if(scanx == tempx && scany == tempy && scanz == tempz) continue;
+										if(snapshot.getBlockTypeId(scanx, scany, scanz) == 0) aroundAir = true;
+									}
+								}
+							}
+							
+							ArrayList<LocationSQL> locations = this.possibleLocations.get(chunk);
+							LocationSQL location = new LocationSQL(tempx, tempy, tempz, snapshot.getWorldName());
+							if(!aroundAir) { //if the block isn't around air, check for Stone blocks and run it through the chance system
+								//TODO: Convert this to a config variable
+								if(mat.equals(Material.STONE) && random.nextInt(100) >= 95) {
+									locations.add(location);
+									this.possibleLocations.put(chunk, locations);
+								}
+							} else { //if the block is near air
+								for(Material ore : this.materialTypes) {
+									if(mat.equals(ore)) { //Check the material against the checkable ore types
+										HashMap<String, Integer> properties = this.materialProperties.get(ore);
+										int chance = properties.get("chance");
+										
+										//Make sure that the chance isn't 0 or less
+										if(chance <= 0) continue;
+										
+										//Run it through the chance system
+										if(random.nextInt(100) > chance) {
+											//it succeeded
+											locations.add(location);
+											this.possibleLocations.put(chunk, locations);
+										}
+									}
+								}
+							}
+							//TODO: pick a place to put the ores
+						}
+					}
+				}
+				
+				runs++; //increment the runs variable
+				//for every 10 runs, regenerate the optimal locations
+				//TODO: make this into a configuration value to fine tune it
+				if(runs % 10 == 0) regenerate = true;
+				//regenerate the optimal material locations
+				if(regenerate) this.regenerate();
+			} else continue; //if snapshot is null, there is nothing we can do
 		}
+		
 		Bukkit.getLogger().info("[OreModifier] Stopping ChunkWorkerThread...");
 		this.running = false;
 	}
@@ -173,11 +264,11 @@ public class ChunkWorkerThread implements Runnable {
 		Iterator<Map.Entry<ChunkSQL, ArrayList<LocationSQL>>> it = this.possibleLocations.entrySet().iterator();
 		HashMap<String, Integer> properties;
 
-		while(it.hasNext()) {
+		while(it.hasNext()) { //TODO: Implement HIGHEST_BLOCK
 			Map.Entry<ChunkSQL, ArrayList<LocationSQL>> set = it.next();
-			ChunkSQL csql = set.getKey();
+			//ChunkSQL csql = set.getKey();
 			Iterator<LocationSQL> it2 = set.getValue().iterator();
-			int highestBlock = 0;
+/*			int highestBlock = 0;
 			int chunkBlockX, chunkBlockZ;
 
 			chunkBlockX = csql.getX() << 4;
@@ -189,7 +280,7 @@ public class ChunkWorkerThread implements Runnable {
 					int temp = Bukkit.getWorld(csql.getWorldName()).getHighestBlockYAt(x, z);
 					if(temp > highestBlock) highestBlock = temp;
 				}
-			}
+			}*/
 
 			//Iterate through the locations and place them in the optimal places
 			while(it2.hasNext()) {
@@ -267,9 +358,23 @@ public class ChunkWorkerThread implements Runnable {
 			statement.addBatch();
 		}
 		statement.executeBatch();
+		
+		Iterator<ChunkSQL> it3 = this.markedChunks.iterator();
+		statement = this.conn.prepareStatement(this.markChunkAdd);
+
+		while(it2.hasNext()) {
+			ChunkSQL csql = it3.next();
+			statement.setInt(1, csql.getX());
+			statement.setInt(2, csql.getZ());
+			statement.setString(3, csql.getWorldName());
+			statement.setInt(4, csql.hashCode());
+			statement.addBatch();
+		}
+		statement.executeBatch();
 
 		it1 = null;
 		it2 = null;
+		it3 = null;
 		statement = null;
 
 		this.conn.commit();

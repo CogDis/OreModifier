@@ -6,6 +6,11 @@
 
 OreModifier:
   ores:
+    STONE:
+      chance: 0
+      override:
+        miny: 3
+        maxy: 60
     COAL:
       chance: 0 #Chance of 0 means ignore
     IRON_ORE:
