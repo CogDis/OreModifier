@@ -3,15 +3,53 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.precipicegames.utilities</groupId>
 	<artifactId>OreModifier</artifactId>
-	<version>0.1</version>
+	<version>0.1-SNAPSHOT</version>
 	<name>OreModifier</name>
 	<description>Modifies Ore placement by moving visible ores</description>
+
+	<developers>
+		<developer>
+			<id>HACKhalo2</id>
+			<name>Jacob Michael Litewski</name>
+			<email>hackhalo2@precipicegames.com</email>
+			<url>http://www.precipicegames.com</url>
+			<organization>Precipice Games</organization>
+			<timezone>Eastern</timezone>
+		</developer>
+	</developers>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+
+	<distributionManagement>
+		<repository>
+			<id>repo.precipicegames.com</id>
+			<url>http://repo.precipicegames.com/content/repositories/releases</url>
+		</repository>
+		<snapshotRepository>
+			<id>repo.precipicegames.com</id>
+			<url>http://repo.precipicegames.com/content/repositories/snapshots</url>
+		</snapshotRepository>
+	</distributionManagement>
+
+	<scm>
+		<connection>scm:git:git://git@github.com:PrecipiceGames/OreModifier.git</connection>
+		<url>https://github.com/PrecipiceGames/OreModifier</url>
+	</scm>
+
+	<issueManagement>
+		<system>Bugzilla</system>
+		<url>http://tracker.precipicegames.com/</url>
+	</issueManagement>
+
 	<repositories>
 		<repository>
-			<id>bukkit-repo</id>
-			<url>http://repo.bukkit.org/content/groups/public/</url>
+			<id>repo.precipicegames.com</id>
+			<url>http://repo.precipicegames.com/content/groups/public/</url>
 		</repository>
 	</repositories>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.bukkit</groupId>
@@ -19,6 +57,7 @@
 			<version>1.1-R5-SNAPSHOT</version>
 		</dependency>
 	</dependencies>
+
 	<pluginRepositories>
 		<pluginRepository>
 			<id>mc-release</id>
@@ -35,6 +74,7 @@
 
 	<build>
 		<sourceDirectory>${basedir}/src/main/java</sourceDirectory>
+
 		<resources>
 			<resource>
 				<targetPath>.</targetPath>
@@ -47,6 +87,7 @@
 				</includes>
 			</resource>
 		</resources>
+
 		<plugins>
 			<plugin>
 				<groupId>com.mycila.maven-license-plugin</groupId>
@@ -58,6 +99,7 @@
 				</configuration>
 			</plugin>
 		</plugins>
+
 		<finalName>${project.name}</finalName>
 	</build>
 </project>
